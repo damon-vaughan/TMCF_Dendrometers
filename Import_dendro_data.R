@@ -9,6 +9,7 @@
 library(needs)
 needs(tidyverse, here, lubridate, readxl)
 
+# Modify this: If a timestamp is duplicated, take the higher record number
 read_dendro_data <- function(x){
   read_csv2(x, show_col_types = F,
             col_names = c(".id", "Time", "Moisture", "T1", "T2", "T3",
@@ -19,13 +20,14 @@ read_dendro_data <- function(x){
            select(.id, Time, Moisture, T1, T2, T3, Dendro, DendroUnits)
 }
 
+# "ET5b",
 DendroVec <- c(
-  "ET1a", "ET2a", "ET2b", "ET3a", "ET4a", "ET4b", "ET5a", "ET6a", "ET7a", "ET8a",
-  "FB1a", "FB2a", "FB3a", "FB3b", "FB4a", "FB4b",
+  "ET1a", "ET2a", "ET2b", "ET3a", "ET4a", "ET4b", "ET5a", "ET6a",
+  "ET7a", "ET8a", "FB1a", "FB2a", "FB3a", "FB3b", "FB4a", "FB4b",
   "FB5a", "FB5b", "FB6a", "FB6b", "FB7a", "FB7b", "FB8a",
   "TV1a", "TV2a", "TV3a", "TV4a")
 
-i <- "TV4a"
+i <- "FB3b"
 for(i in DendroVec){
   Tree.ID = str_sub(i, start = 1, end = 3)
 
@@ -41,8 +43,11 @@ for(i in DendroVec){
     bind_rows() %>%
     filter(Time > (baseline2 + 60000)) %>%
     mutate(DendroID = i) %>%
-    select(DendroID, everything())
+    select(DendroID, everything()) %>%
+    distinct() %>%
+    arrange(Time)
 
+  # Occasionally data were accidentally downloaded by micrometer
   d2 = d %>%
     mutate(DendroUnits = ifelse(
       DendroID == "ET2b" &
@@ -55,16 +60,18 @@ for(i in DendroVec){
         Time <= as.POSIXct("2023-02-18 01:00:00", tz = "UTC"),
       "Micrometers", DendroUnits))
 
+  # Micrometers always less than Tomst units
   d3 = d2 %>%
     mutate(Radius = ifelse(DendroUnits == "Tomst",
                            (Dendro-1278)*(8890/(34000-1278)), Dendro)) %>%
     select(DendroID, .id, Time, Moisture, T1, T2, T3, Radius)
 
-  # Check for duplicate timestamps and remove first. Removes the last obs but thats ok
+  # Check for duplicate timestamps and remove first. Removes the last obs but thats ok. At some point would be good to check and make sure this isn't deleting extra things
   d4 = d3 %>%
     mutate(Timelead = lead(Time)) %>%
     filter(Time != Timelead) %>%
     select(-Timelead)
+  # which(duplicated(d4$Time) == TRUE)
 
   out = str_c("Dendro_data_LVL1/", i, "_Dendro_LVL1.csv")
   write_csv(d4, out)

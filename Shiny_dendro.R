@@ -1,16 +1,11 @@
 library(needs)
-needs(tidyverse, shiny, here, lubridate)
+needs(tidyverse, shiny, here, lubridate, readxl)
 
 newfilenames <- list.files(here("Dendro_data_LVL1"), full.names = T)
 newdat <- lapply(newfilenames, read_csv, show_col_types = F) %>%
   bind_rows() %>%
   separate(DendroID, into = c("Tree", "Dendro"), 3)
 max.date <- max(newdat$Time, na.rm = T)
-
-oldfilenames <- list.files(here("old_Dendro_data_LVL2"), full.names = T)
-olddat <- lapply(oldfilenames, read_csv, show_col_types = F) %>%
-  bind_rows() %>%
-  rename(Time = Timestamp)
 
 Dendro_DL <- read_csv(here("Dendro_data_supporting", "Dendro_DL.csv"), show_col_types = F) %>%
   mutate(DL_date = ymd(DL_date, tz = "UTC")) %>%
@@ -52,10 +47,6 @@ ui <- fluidPage(
                                         "TV1", "TV2", "TV3", "TV4"),
                             selected = "ET1")),
         column(2, offset = 1,
-               radioButtons("dataset",
-                            label = h4("Select dataset"),
-                            choices = c("old", "new"),
-                            selected = "new"),
                radioButtons("dendro",
                             label = h4("Select Dendrometer"),
                             choices = c("a", "b"),
@@ -82,17 +73,11 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
   dataInput <- reactive({
-    if(input$dataset == "new"){
-      newdat %>%
-        filter(Tree == input$tree) %>%
-        filter(Dendro == input$dendro) %>%
-        filter(Time >= input$daterange[1] & Time <= input$daterange[2])
-  } else {
-      olddat %>%
-        filter(Tree == input$tree) %>%
-        filter(Dendro == input$dendro) %>%
-        filter(Time >= input$daterange[1] & Time <= input$daterange[2])}
-    })
+    newdat %>%
+      filter(Tree == input$tree) %>%
+      filter(Dendro == input$dendro) %>%
+      filter(Time >= input$daterange[1] & Time <= input$daterange[2])
+  })
 
   output$maxdate.output <- renderPrint({
     max(dataInput()$Time)
