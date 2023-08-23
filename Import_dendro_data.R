@@ -9,46 +9,69 @@
 library(needs)
 needs(tidyverse, here, lubridate, readxl)
 
-# Modify this: If a timestamp is duplicated, take the higher record number
+# Define a function to read and preprocess dendrometer data
 read_dendro_data <- function(x){
-  read_csv2(x, show_col_types = F,
+  suppressMessages(read_csv2(x, show_col_types = F,
             col_names = c(".id", "Time", "Moisture", "T1", "T2", "T3",
-                          "Dendro", "X8", "X9", "X10")) %>%
+                          "Dendro", "X8", "X9", "X10"))) %>%
+    # Parse the "Time" column as posixct
     mutate(Time = ymd_hm(Time, tz = "UTC"),
+           # Identify files that were mistakenly downloaded as micrometers
            DendroUnits = ifelse(
              str_detect(x, "um") == T, "Micrometers", "Tomst")) %>%
            select(.id, Time, Moisture, T1, T2, T3, Dendro, DendroUnits)
 }
 
-# "ET5b",
+# Define a vector of DendroIDs
 DendroVec <- c(
-  "ET1a", "ET2a", "ET2b", "ET3a", "ET4a", "ET4b", "ET5a", "ET6a",
+  "ET1a", "ET2a", "ET2b", "ET3a", "ET4a", "ET4b", "ET5a", "ET5b", "ET6a",
   "ET7a", "ET8a", "FB1a", "FB2a", "FB3a", "FB3b", "FB4a", "FB4b",
   "FB5a", "FB5b", "FB6a", "FB6b", "FB7a", "FB7b", "FB8a",
   "TV1a", "TV2a", "TV3a", "TV4a")
 
-i <- "FB3b"
-for(i in DendroVec){
-  Tree.ID = str_sub(i, start = 1, end = 3)
+# Directory paths
+data_raw_dir <- here("Dendro_data_raw")
+data_support_dir <- here("Dendro_data_supporting")
 
-  filenames = list.files(here("Dendro_data_import", Tree.ID), full.names = T)
-  filenames2 = filenames[which(str_detect(filenames, i) == T)]
+for(i in DendroVec){
+  # Extract the first three characters to get Tree.ID
+  Tree.ID <- str_sub(i, start = 1, end = 3)
+
+  # List files in a directory related to the current Tree.ID
+  filenames <- list.files(file.path(data_raw_dir, Tree.ID), full.names = T)
+  # Filter filenames to select those matching the current dendrometer
+  filenames <- filenames[which(str_detect(filenames, i) == T)]
+
+  if (length(filenames) == 0) {
+    cat("No files found for", i, "\n")
+    next  # Skip to the next DendroID
+  }
 
   # Find timestamp where data starts
-  baseline = read_excel(here("Dendro_data_supporting", "Tomst_install.xlsx")) %>%
+  baseline <- read_excel(file.path(data_support_dir, "Dendro_metadata.xlsx")) %>%
     filter(DendroID == i)
-  baseline2 = as.POSIXct(as.character((baseline[1,4])), tz = "UTC")
 
-  d = lapply(filenames2, read_dendro_data) %>%
+  if (nrow(baseline) == 0) {
+    cat("No baseline data found for", DendroID, "\n")
+    next  # Skip to the next DendroID
+  }
+
+  baseline_time <- as.POSIXct(as.character((baseline$Install.Datetime)),
+                              tz = "UTC")
+
+  # Read, process, and filter data from multiple CSV files
+  data_list <- lapply(filenames, read_dendro_data)
+
+  data_combined <- data_list %>%
     bind_rows() %>%
-    filter(Time > (baseline2 + 60000)) %>%
+    filter(Time > (baseline_time + days(1))) %>%
     mutate(DendroID = i) %>%
     select(DendroID, everything()) %>%
     distinct() %>%
     arrange(Time)
 
-  # Occasionally data were accidentally downloaded by micrometer
-  d2 = d %>%
+  # Fix the occasional accidental micrometer downloads
+  data_combined2 <- data_combined %>%
     mutate(DendroUnits = ifelse(
       DendroID == "ET2b" &
         Time >= as.POSIXct("2023-03-28 16:45:00", tz = "UTC") &
@@ -60,23 +83,23 @@ for(i in DendroVec){
         Time <= as.POSIXct("2023-02-18 01:00:00", tz = "UTC"),
       "Micrometers", DendroUnits))
 
-  # Micrometers always less than Tomst units
-  d3 = d2 %>%
+  # Convert radius to Micrometers (always less than Tomst)
+  data_combined3 <- data_combined2 %>%
     mutate(Radius = ifelse(DendroUnits == "Tomst",
                            (Dendro-1278)*(8890/(34000-1278)), Dendro)) %>%
     select(DendroID, .id, Time, Moisture, T1, T2, T3, Radius)
 
   # Check for duplicate timestamps and remove first. Removes the last obs but thats ok. At some point would be good to check and make sure this isn't deleting extra things
-  d4 = d3 %>%
+  data_combined4 <- data_combined3 %>%
     mutate(Timelead = lead(Time)) %>%
     filter(Time != Timelead) %>%
     select(-Timelead)
   # which(duplicated(d4$Time) == TRUE)
 
-  out = str_c("Dendro_data_LVL1/", i, "_Dendro_LVL1.csv")
-  write_csv(d4, out)
+  out <- str_c("Dendro_data_LVL1/", i, "_Dendro_LVL1.csv")
+  write_csv(data_combined4, out)
 
-  print(i)
+  cat("Processed", i, "\n")
 }
 
 # Find_download_dates -----------------------------------------------------

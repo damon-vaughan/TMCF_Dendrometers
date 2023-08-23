@@ -7,17 +7,18 @@ newdat <- lapply(newfilenames, read_csv, show_col_types = F) %>%
   separate(DendroID, into = c("Tree", "Dendro"), 3)
 max.date <- max(newdat$Time, na.rm = T)
 
-Dendro_DL <- read_csv(here("Dendro_data_supporting", "Dendro_DL.csv"), show_col_types = F) %>%
+Dendro_DL <- read_csv(here("Dendro_data_supporting", "Dendro_DL_Dates.csv"),
+                      show_col_types = F) %>%
   mutate(DL_date = ymd(DL_date, tz = "UTC")) %>%
   left_join(newdat, by = c("Tree", "Dendro", "DL_date" = "Time")) %>%
   select(Tree, Dendro, DL_date, LabelLoc = Radius) %>%
   mutate(LabelLoc = LabelLoc - 50)
 
-Tree_visits <- read_excel("C:/Users/vaug8/OneDrive - University of Kentucky/TMCF/Site info/Maintenance notes/Tree_visits.xlsx") %>%
-  mutate(Visit = ymd(Visit, tz = "UTC")) %>%
-  left_join(newdat, by = c("Tree", "Visit" = "Time")) %>%
-  select(Tree, Dendro, Visit, LabelLoc = Radius) %>%
-  mutate(LabelLoc = LabelLoc)
+# Tree_visits <- read_excel("C:/Users/vaug8/OneDrive - University of Kentucky/TMCF/Site info/Maintenance notes/Tree_visits.xlsx") %>%
+#   mutate(Visit = ymd(Visit, tz = "UTC")) %>%
+#   left_join(newdat, by = c("Tree", "Visit" = "Time")) %>%
+#   select(Tree, Dendro, Visit, LabelLoc = Radius) %>%
+#   mutate(LabelLoc = LabelLoc)
 
 # User interface ----
 ui <- fluidPage(
@@ -59,7 +60,7 @@ ui <- fluidPage(
       downloadButton("downloadData", "Download")
     ),
 
-    mainPanel("Data until:",
+    mainPanel("Graph shows data until:",
               verbatimTextOutput("maxdate.output"),
               plotOutput("plot1",
                          hover = "plot_hover",
@@ -90,18 +91,17 @@ server <- function(input, output, session) {
       filter(DL_date >= input$daterange[1] & DL_date <= input$daterange[2])
   })
 
-  labelInput2 <- reactive({
-    Tree_visits %>%
-      filter(Tree == input$tree) %>%
-      filter(Visit >= input$daterange[1] & Visit <= input$daterange[2])
-  })
+  # labelInput2 <- reactive({
+  #   Tree_visits %>%
+  #     filter(Tree == input$tree) %>%
+  #     filter(Visit >= input$daterange[1] & Visit <= input$daterange[2])
+  # })
 
   output$plot1 <- renderPlot({
-    ggplot() +
+    p = ggplot() +
       geom_line(data = dataInput(), aes(x = Time, y = Radius)) +
-      geom_label(data = labelInput(), aes(x = DL_date, y = LabelLoc, label = "DL")) +
-      geom_point(data = labelInput2(), aes(x = Visit, y = LabelLoc), color = "blue",
-                 size = 2) +
+      # geom_point(data = labelInput2(), aes(x = Visit, y = LabelLoc), color = "blue",
+      #            size = 2) +
       labs(y = "Micrometers") +
       theme_bw() +
       theme(axis.title.x = element_blank(),
@@ -109,7 +109,12 @@ server <- function(input, output, session) {
             axis.title.y = element_text(size = 24),
             axis.text.y = element_text(size = 20),
             plot.title = element_text(size = 24)) +
-      ggtitle(str_c(input$tree, "_", input$dendro))})
+      ggtitle(str_c(input$tree, "_", input$dendro))
+    if(input$showDL == "yes"){
+      p = p +
+        geom_label(data = labelInput(), aes(x = DL_date, y = LabelLoc, label = "DL"))}
+    p
+    })
 
   output$plot_hoverinfo <- renderPrint({
     val <- nearPoints(dataInput(), input$plot_hover, maxpoints = 1)
