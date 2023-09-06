@@ -9,6 +9,7 @@ Dendro_data_supporting: Metadata files that are needed to run some of the script
 Scripts:
 Import_dendro_data.R: Script to create LVL1 data from raw files
 Shiny_dendro.R: The Shiny application
+jump_fix.R: Work in progress to fix jumps
 
 Units:
 Raw data: Either micrometers or Tomst

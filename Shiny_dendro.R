@@ -1,22 +1,22 @@
 library(needs)
 needs(tidyverse, shiny, here, lubridate, readxl)
 
-newfilenames <- list.files(here("Dendro_data_LVL1"), full.names = T)
+newfilenames <- list.files(file.path("Dendro_data_LVL1"), pattern = ".csv", full.names = T)
 newdat <- lapply(newfilenames, read_csv, show_col_types = F) %>%
   bind_rows() %>%
-  separate(DendroID, into = c("Tree", "Dendro"), 3)
-max.date <- max(newdat$Time, na.rm = T)
+  separate(Dendrometer, into = c("Tree", "Letter"), 3)
+max.date <- max(newdat$Timestamp, na.rm = T)
 
 Dendro_DL <- read_csv(here("Dendro_data_supporting", "Dendro_DL_Dates.csv"),
                       show_col_types = F) %>%
   mutate(DL_date = ymd(DL_date, tz = "UTC")) %>%
-  left_join(newdat, by = c("Tree", "Dendro", "DL_date" = "Time")) %>%
-  select(Tree, Dendro, DL_date, LabelLoc = Radius) %>%
+  left_join(newdat, by = c("Tree", "Letter", "DL_date" = "Timestamp")) %>%
+  select(Tree, Letter, DL_date, LabelLoc = Radius) %>%
   mutate(LabelLoc = LabelLoc - 50)
 
 # Tree_visits <- read_excel("C:/Users/vaug8/OneDrive - University of Kentucky/TMCF/Site info/Maintenance notes/Tree_visits.xlsx") %>%
 #   mutate(Visit = ymd(Visit, tz = "UTC")) %>%
-#   left_join(newdat, by = c("Tree", "Visit" = "Time")) %>%
+#   left_join(newdat, by = c("Tree", "Visit" = "Timestamp")) %>%
 #   select(Tree, Dendro, Visit, LabelLoc = Radius) %>%
 #   mutate(LabelLoc = LabelLoc)
 
@@ -48,8 +48,8 @@ ui <- fluidPage(
                                         "TV1", "TV2", "TV3", "TV4"),
                             selected = "ET1")),
         column(2, offset = 1,
-               radioButtons("dendro",
-                            label = h4("Select Dendrometer"),
+               radioButtons("letter",
+                            label = h4("Select Letter"),
                             choices = c("a", "b"),
                             selected = "a"),
                radioButtons("showDL",
@@ -76,18 +76,18 @@ server <- function(input, output, session) {
   dataInput <- reactive({
     newdat %>%
       filter(Tree == input$tree) %>%
-      filter(Dendro == input$dendro) %>%
-      filter(Time >= input$daterange[1] & Time <= input$daterange[2])
+      filter(Letter == input$letter) %>%
+      filter(Timestamp >= input$daterange[1] & Timestamp <= input$daterange[2])
   })
 
   output$maxdate.output <- renderPrint({
-    max(dataInput()$Time)
+    max(dataInput()$Timestamp)
   })
 
   labelInput <- reactive({
     Dendro_DL %>%
       filter(Tree == input$tree) %>%
-      filter(Dendro == input$dendro) %>%
+      filter(Letter == input$letter) %>%
       filter(DL_date >= input$daterange[1] & DL_date <= input$daterange[2])
   })
 
@@ -99,7 +99,7 @@ server <- function(input, output, session) {
 
   output$plot1 <- renderPlot({
     p = ggplot() +
-      geom_line(data = dataInput(), aes(x = Time, y = Radius)) +
+      geom_line(data = dataInput(), aes(x = Timestamp, y = Radius)) +
       # geom_point(data = labelInput2(), aes(x = Visit, y = LabelLoc), color = "blue",
       #            size = 2) +
       labs(y = "Micrometers") +
@@ -109,7 +109,7 @@ server <- function(input, output, session) {
             axis.title.y = element_text(size = 24),
             axis.text.y = element_text(size = 20),
             plot.title = element_text(size = 24)) +
-      ggtitle(str_c(input$tree, "_", input$dendro))
+      ggtitle(str_c(input$tree, input$letter))
     if(input$showDL == "yes"){
       p = p +
         geom_label(data = labelInput(), aes(x = DL_date, y = LabelLoc, label = "DL"))}
@@ -118,7 +118,7 @@ server <- function(input, output, session) {
 
   output$plot_hoverinfo <- renderPrint({
     val <- nearPoints(dataInput(), input$plot_hover, maxpoints = 1)
-    unique(val$Time)
+    unique(val$Timestamp)
   })
 
   output$plot_brushedpoints <- renderPlot({
@@ -126,7 +126,7 @@ server <- function(input, output, session) {
     if (nrow(dat) == 0)
       return()
     ggplot(dat) +
-      geom_line(aes(x = Time, y = Radius)) +
+      geom_line(aes(x = Timestamp, y = Radius)) +
       labs(y = "micrometers") +
       theme_bw() +
       theme(axis.title.x = element_blank(),
