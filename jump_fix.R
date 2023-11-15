@@ -6,7 +6,7 @@ d <- read_csv("Dendro_data_LVL1/ET2a_Dendro_LVL1.csv")
 # This is a function that takes a single input (jump threshold), and adjusts the dataframe that you just loaded (d)
 # Un-comment the line below, and you will be able to run the function line-by-line to understand it and diagnose problems
 # jump.threshold <- 5
-fix_jumps <- function(jump.threshold){
+fix_jumps <- function(d, jump.threshold){
 
   # change the name of the data (not really necessary)
   d2 = d

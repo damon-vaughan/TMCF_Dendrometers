@@ -7,50 +7,38 @@
 library(needs)
 needs(tidyverse, here, lubridate, readxl)
 
-# Constants, functions, and directories -----------------------------------
+options(readr.show_col_types = FALSE)
+source("Functions_dendro.R")
 
-# Define a function to read and preprocess dendrometer data
-read_dendro_data <- function(x){
-  suppressMessages(read_csv2(x, show_col_types = F,
-            col_names = c(".id", "Timestamp", "Moisture", "T1", "T2", "T3",
-                          "Dendro", "X8", "X9", "X10"))) %>%
-    # Parse the "Time" column as posixct
-    mutate(Timestamp = ymd_hm(Timestamp, tz = "UTC"),
-           # Identify files that were mistakenly downloaded as micrometers
-           DendroUnits = ifelse(
-             str_detect(x, "um") == T, "Micrometers", "Tomst")) %>%
-           select(.id, Timestamp, Moisture, T1, T2, T3, Dendro, DendroUnits)
-}
-
-# Define a vector of DendroIDs
-DendroVec <- c(
-  "ET1a", "ET2a", "ET2b", "ET3a", "ET4a", "ET4b", "ET5a", "ET5b", "ET6a",
-  "ET7a", "ET8a", "FB1a", "FB2a", "FB3a", "FB3b", "FB4a", "FB4b",
-  "FB5a", "FB5b", "FB6a", "FB6b", "FB7a", "FB7b", "FB8a",
-  "TV1a", "TV2a", "TV3a", "TV4a")
+# Data and directories -----------------------------------
 
 # Directory paths
-data_raw_dir <- here("Dendro_data_raw")
-data_support_dir <- here("Dendro_data_supporting")
+data.raw.dir <- here("Dendro_data_raw")
+data.support.dir <- here("Dendro_data_supporting")
 
-baseline <- read_excel(file.path(data_support_dir, "Dendro_metadata.xlsx"))
+baseline <- read_excel(file.path(data.support.dir, "Dendro_metadata.xlsx"))
+
+import.log <- read_csv(file.path("Dendro_data_supporting",
+                                 "Dendro_import_log.csv"),
+                       show_col_types = F)
 
 # Import data -------------------------------------------------------------
 
-i <- DendroVec[1]
 Log <- NULL
-for(i in DendroVec){
+dendro.vec <- dendro.vec.full
+i <- "ET1a"
+for(i in dendro.vec){
   # Extract the first three characters to get Tree.ID
   TreeID <- str_sub(i, start = 1, end = 3)
 
   # List files in a directory related to the current Tree.ID
-  filenames <- list.files(file.path(data_raw_dir, TreeID), full.names = T)
+  filenames <- list.files(file.path(data.raw.dir, TreeID), full.names = T)
   # Filter filenames to select those matching the current dendrometer
   filenames <- filenames[which(str_detect(filenames, i) == T)]
 
   if (length(filenames) == 0) {
     # Log <- c(Log, cat("No files found for", i, "\n"))
-    Log <- c(Log, str_c("No files found for", i))
+    cat("No files found for", i, "\n")
     next  # Skip to the next DendroID
   }
 
@@ -61,14 +49,14 @@ for(i in DendroVec){
 
   if (length(baseline_time) == 0) {
     # Log <- c(Log, cat("No baseline data found for", i, "\n"))
-    Log <- c(Log, str_c("No baseline data found for", i))
+    Log <- cat("No baseline data found for", i, "\n")
     next  # Skip to the next DendroID
   }
 
   # Read, process, and filter data from multiple CSV files
-  data_list <- lapply(filenames, read_dendro_data)
+  data.list <- lapply(filenames, read_dendro_data)
 
-  data_combined <- data_list %>%
+  data.combined <- data.list %>%
     bind_rows() %>%
     filter(Timestamp > (ymd_hms(baseline_time, tz = "UTC") + days(1))) %>%
     mutate(Dendrometer = i) %>%
@@ -77,7 +65,7 @@ for(i in DendroVec){
     arrange(Timestamp)
 
   # Fix the occasional accidental micrometer downloads
-  data_combined2 <- data_combined %>%
+  data.combined2 <- data.combined %>%
     mutate(DendroUnits = ifelse(
       Dendrometer == "ET2b" &
         Timestamp >= as.POSIXct("2023-03-28 16:45:00", tz = "UTC") &
@@ -90,26 +78,39 @@ for(i in DendroVec){
       "Micrometers", DendroUnits))
 
   # Convert radius to Micrometers (always less than Tomst)
-  data_combined3 <- data_combined2 %>%
+  data.combined3 <- data.combined2 %>%
     mutate(Radius = ifelse(DendroUnits == "Tomst",
                            (Dendro-1278)*(8890/(34000-1278)), Dendro)) %>%
     select(Dendrometer, .id, Timestamp, Moisture, T1, T2, T3, Radius)
 
   # Check for duplicate timestamps and remove first. Removes the last obs but thats ok. At some point would be good to check and make sure this isn't deleting extra things
-  data_combined4 <- data_combined3 %>%
+  data.combined4 <- data.combined3 %>%
     mutate(Timelead = lead(Timestamp)) %>%
     filter(Timestamp != Timelead) %>%
     select(-Timelead)
   # which(duplicated(d4$Time) == TRUE)
 
-  out <- str_c("Dendro_data_LVL1/", i, "_Dendro_LVL1.csv")
-  write_csv(data_combined4, out)
+  out <- str_c("Dendro_data_L1/", i, "_Dendro_L1.csv")
+  write_csv(data.combined4, out)
 
+  # Update import logs
+  import.log <- read_csv(file.path("Dendro_data_supporting",
+                                   "Dendro_import_log.csv"),
+                         show_col_types = F)
+
+  import.log2 <- import.log %>%
+    mutate(Last.import = ifelse(
+      Dendrometer == i, max(data.combined4$Timestamp, na.rm = T),
+      Last.import)) %>%
+    mutate(Last.import = as_datetime(Last.import))
+
+  write_csv(import.log2, file.path("Dendro_data_supporting",
+                                  "Dendro_import_log.csv"))
   # Log <- c(Log, cat("Processed", i, "\n"))
-  Log <- c(Log, str_c("Processed", i))
+  cat("Processed", i, "\n")
 }
 
-# Find_download_dates -----------------------------------------------------
+## Find_download_dates -----------------------------------------------------
 
 x <- "ET6a"
 find_dendro_DL <- function(x){
@@ -125,72 +126,45 @@ find_dendro_DL <- function(x){
   return(d)
 }
 Dendro_DL <- lapply(DendroVec, find_dendro_DL) %>%
-  bind_rows %>%
+  bind_rows() %>%
   separate(Dendro, into = c("Tree", "Dendro"), 3)
 
 write_csv(Dendro_DL, here("Dendro_data_supporting", "Dendro_DL.csv"))
 
 
+# L1 to L2 ----------------------------------------------------------------
 
-# Extra processing --------------------------------------------------------
+dendro.vec <- dendro.vec.full
 
-## Treenetproc -------------------------------------------------------------
+i <- "ET4a"
+for(i in dendro.vec){
+  filename.in.L1 <- str_c("Dendro_data_L1/", i, "_Dendro_L1.csv")
 
-# library(devtools)
-# devtools::install_github("treenet/treenetproc")
-library(treenetproc)
+  if(file.exists(filename.in.L1)){
+    d <- read_csv(filename.in.L1, show_col_types = F)
+  } else {
+    next
+    cat("No L1 file for", i, "\n")
+  }
 
-data("dendro_data_L0")
+  d2 <- d %>%
+    fix_jumps(10)
 
-dendro_L1 <- proc_L1(data_L0 = dendro_data_L0, reso = 10, input = "long")
-# temp_L1 <- proc_L1(data_L0 = temp_L0, reso = 15, input = "long")
+  write_csv(d2, file.path("Dendro_data_L2",
+                      str_c(i, "_Dendro_L2.csv")))
+}
 
-dendro_L2 <- proc_dendro_L2(dendro_L1 = dendro_L1,plot = T)
+x <- d
+y <- 10
+fix_jumps <- function(x, y){
 
-grow_seas(dendro_L2 = dendro_L2)
-
-my_L0 <- read_csv(file.path("Dendro_data_LVL1", "ET6a_Dendro_LVL1.csv")) %>%
-  select(series = Dendrometer, ts = Timestamp, value = Radius)
-
-temp_L0 <- read_csv(file.path("Dendro_data_LVL1", "ET6a_Dendro_LVL1.csv")) %>%
-  select(series = Dendrometer, ts = Timestamp, value = T1)
-
-my_L1 <- proc_L1(data_L0 = my_L0, reso = 15, input = "long")
-temp_L1 <- proc_L1(data_L0 = temp_L0, reso = 15, input = "long")
-
-my_L2 <- proc_dendro_L2(dendro_L1 = my_L1, temp_L1 = temp_L1,
-                     plot = T)
-
-grow_seas(dendro_L2 = my_L2)
-stats <- phase_stats(dendro_L2 = my_L2, plot_phase = T)
-
-## Function to eliminate jumps --------------------------------------------
-
-
-
-
-newfilenames <- list.files(file.path("Dendro_data_LVL1"), full.names = T)
-newdat <- lapply(newfilenames, read_csv, show_col_types = F)
-
-jump.cutoff <- read_excel(here("Dendro_data_supporting", "Tomst_install.xlsx")) %>%
-  mutate(Jump.cutoff = as.numeric(Jump.cutoff))
-
-DendroVec <- c("ET1", "ET2a", "ET2b", "ET3", "ET4a", "ET4b", "ET5",
-               "ET6a", "ET7", "ET8", "FB1", "FB2a", "FB3a", "FB3b", "FB4a", "FB4b",
-               "FB5a", "FB5b", "FB6a", "FB7a", "FB8a", "TV1a", "TV2a", "TV3a", "TV4a")
-
-# y is the biggest acceptable single-step increase
-
-d <- read_csv("Dendro_data_LVL1/ET2a_Dendro_LVL1.csv")
-
-fix_jumps <- function(x){
-
-  x2 = d
+  x2 = x
 
   x3 = x2 %>%
     mutate(lagRadius = lag(Radius),
            Growth = Radius - lagRadius)
 
+  # The jump comes right before the indicated timestamp, so should be subtracted from all including the indicated
   jumps = x3 %>%
     filter(abs(Growth) > y) %>%
     rename(Jump = Growth) %>%
@@ -203,105 +177,74 @@ fix_jumps <- function(x){
     mutate(cumulativeJump = ifelse(Timestamp == min(x3$Timestamp, na.rm = T),
                                    0, cumulativeJump)) %>%
     fill(cumulativeJump, .direction = "down") %>%
-    mutate(newRadius = Radius - cumulativeJump, na.rm = T) %>%
-    select(Dendrometer, Timestamp, Radius, newRadius, jumpStart)
+    mutate(Radius.OG = Radius,
+           Radius = Radius - cumulativeJump) %>%
+    mutate(jumpStart = ifelse(jumpStart == "yes", Radius, jumpStart)) %>%
+    select(Dendrometer, Timestamp, Radius.OG, Radius, jumpStart)
   return(x4)
 }
 
-# Change threshold here- try 5 and try 50 to see the difference in the plot
-d2 <- fix_jumps(50)
 
-d2.jumpStart <- d2 %>%
-  filter(jumpStart == "yes")
+# L1 to L2a ----------------------------------------------------------------
+needs(treenetproc)
 
-# Plot- show original data (dashed) and new data (solid). Blue circles indicate the jumps
-ggplot() +
-  geom_line(data = d2, aes(x = Timestamp, y = newRadius)) +
-  geom_line(data = d2, aes(x = Timestamp, y = Radius), linetype = "dashed") +
-  geom_point(data = d2.jumpStart,
-             aes(x = Timestamp, y = newRadius), color = "blue") +
-  theme_bw() +
-  scale_x_datetime(date_breaks="1 month", date_labels="%m-%Y") +
-  ggtitle(unique(d2$Dendrometer))
+dendro.vec <- dendro.vec.full
 
-# ggplotly(ggplot() +
-#   geom_line(data = d2, aes(x = date_time, y = newRadius)) +
-#   geom_line(data = d2, aes(x = date_time, y = Radius), linetype = "dashed") +
-#   geom_point(data = d2.jumpStart, aes(x = date_time, y = newRadius), color = "blue") +
-#   theme_bw() +
-#   scale_x_datetime(date_breaks="1 month", date_labels="%m-%Y") +
-#   ggtitle(unique(d2$DendroID)))
+i <- "ET2b"
+for(i in dendro.vec){
+  filename.in.L1 <- str_c("Dendro_data_L1/", i, "_Dendro_L1.csv")
 
-## Apply function ----------------------------------------------------------
+  if(file.exists(filename.in.L1)){
+    d <- read_csv(filename.in.L1, show_col_types = F)
+  } else {
+    next
+    cat("No L1 file for", i, "\n")
+  }
 
-fix_jumps_and_save <- function(x, y){
+  d2 <- d %>%
+    select(series = Dendrometer, ts = Timestamp, value = Radius) %>%
+    proc_L1(reso = 15) %>%
+    proc_dendro_L2(tol_out = 1000, tol_jump = 10, plot_export = F, plot = F)
 
-  jump.cut2 <- jump.cutoff %>%
-    filter(DendroID == x)
+  gro.yr.reset <- d2 %>%
+    filter(year(ts) == "2022") %>%
+    filter(ts == max(ts, na.rm = T)) %>%
+    pull(gro_yr)
+  if(length(gro.yr.reset) == 0){
+    gro.yr.reset = 0
+  }
 
-  x2 = read_csv(str_c("Dendro_data_LVL2/", x, "_Dendro_LVL2.csv"),
-                show_col_types = F)
+  d3 <- d2 %>%
+    rename(Dendrometer = series, Timestamp = ts, Radius = value) %>%
+    mutate(gro_yr = ifelse(Timestamp >= as_datetime("2023-01-01 00:00:00"),
+                           gro_yr + gro.yr.reset, gro_yr))
 
-  x3 = x2 %>%
-    mutate(lagRadius = lag(Radius),
-           Growth = Radius - lagRadius)
-
-  # The jump comes right before the indicated timestamp, so should be subtracted from all including the indicated
-  jumps = x3 %>%
-    filter(abs(Growth) > unique(jump.cut2$Jump.cutoff)) %>%
-    rename(Jump = Growth) %>%
-    mutate(cumulativeJump = cumsum(Jump),
-           jumpStart = "y") %>%
-    select(DendroID, date_time, Jump, cumulativeJump, jumpStart)
-
-  x4 = x3 %>%
-    left_join(jumps, by = c("DendroID", "date_time")) %>%
-    mutate(cumulativeJump = ifelse(date_time == min(x3$date_time, na.rm = T),
-                                   0, cumulativeJump)) %>%
-    fill(cumulativeJump, .direction = "down") %>%
-    mutate(newRadius = Radius - cumulativeJump, na.rm = T) %>%
-    select(DendroID, date_time, Radius, newRadius, jumpStart)
-
-  write_csv(x4, str_c("Dendro_data_LVL3/", x, "_Dendro_LVL3.csv"))
+  write_csv(d3, file.path("Dendro_data_L2a",
+                          str_c(i, "_Dendro_L2a.csv")))
 }
 
-DendroVec <- c("ET1", "ET2a", "ET2b", "ET3", "ET4a", "ET4b", "ET5",
-               "ET6a", "ET7", "ET8", "FB1", "FB2a", "FB3a", "FB3b", "FB4a", "FB4b",
-               "FB5a", "FB5b", "FB6a", "FB7a", "FB8a", "TV1a", "TV2a", "TV3a", "TV4a")
 
-lapply(DendroVec, fix_jumps_and_save)
+# L2 to L3 ----------------------------------------------------------------
 
-## Viewer ------------------------------------------------------------------
+d <- read_csv(file.path("Dendro_data_L2", "ET4a_Dendro_L2.csv"),
+              guess_max = 10000)
+problems(d)
+# Extra processing --------------------------------------------------------
 
-plot_tomst <- function(x){
-  ggplot(x) +
-    geom_line(aes(x = date_time, y = Radius)) +
-    theme_bw() +
-    scale_x_datetime(date_breaks="1 month", date_labels="%m-%Y") +
-    ggtitle(unique(x$DendroID))
-}
+## Treenetproc -------------------------------------------------------------
 
-Dendro.ID <- "FB1a"
-d <- read_csv(str_c("Dendro_data_LVL2/", Dendro.ID, "_Dendro_LVL2.csv"))
-plot_tomst(d)
+# library(devtools)
+# devtools::install_github("treenet/treenetproc")
 
-p <- plot_tomst(d)
-ggplotly(p)
+d <- read_csv("Dendro_data_L1/ET6a_Dendro_L1.csv") %>%
+  select(series = Dendrometer, ts = Timestamp, value = Radius)
 
-read_and_plot_tomst <- function(x){
-  d = read_csv(str_c("Dendro_data_LVL3/", x, "_Dendro_LVL3.csv"))
-  ggplot(d) +
-    geom_line(aes(x = date_time, y = newRadius)) +
-    theme_bw() +
-    scale_x_datetime(date_breaks="1 month", date_labels="%m-%Y") +
-    ggtitle(unique(d$DendroID))
-}
+# Basic processing functions
+dendro_L1 <- proc_L1(data_L0 = d, reso = 15, input = "long")
+dendro_L2 <- proc_dendro_L2(dendro_L1 = dendro_L1, plot = T, tol_jump = 10)
 
-DendroVec <- c("ET1", "ET2a", "ET2b", "ET3", "ET4a", "ET4b", "ET5",
-               "ET6a", "ET7", "ET8", "FB1", "FB2a", "FB3a", "FB3b", "FB4a", "FB4b",
-               "FB5a", "FB5b", "FB6a", "FB7a", "FB8a", "TV1a", "TV2a", "TV3a", "TV4a")
-
-read_and_plot_tomst(DendroVec[1])
-
-lapply(DendroVec, read_and_plot_tomst)
+# Phase stats... pretty cool but not sure how it can be useful
+# d <- read_csv(file.path("Dendro_data_L2a", "ET6a_Dendro_L2a.csv"),
+#               guess_max = 10000)
+test <- phase_stats(dendro_L2)
 
