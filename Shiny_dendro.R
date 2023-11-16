@@ -1,5 +1,6 @@
 library(needs)
-needs(tidyverse, shiny, lubridate, readxl, ggpubr)
+#needs(tidyverse, shiny, lubridate, readxl, ggpubr)
+needs(tidyverse, shiny, lubridate, readxl)
 
 import.log <- read_csv(file.path("Dendro_data_supporting",
                                  "Dendro_import_log.csv"),
