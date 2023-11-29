@@ -116,7 +116,7 @@ x <- "ET6a"
 find_dendro_DL <- function(x){
   TreeID = str_sub(x, start = 1, end = 3)
 
-  filenames = list.files(here("Dendro_data_import", TreeID), full.names = T)
+  filenames = list.files(here("Dendro_data_raw", TreeID), full.names = T)
   filenames2 = filenames[which(str_detect(filenames, x) == T)]
 
   d = data.frame(Dendro = x, filename = filenames2) %>%
@@ -125,7 +125,7 @@ find_dendro_DL <- function(x){
     select(Dendro, DL_date)
   return(d)
 }
-Dendro_DL <- lapply(DendroVec, find_dendro_DL) %>%
+Dendro_DL <- lapply(dendro.vec, find_dendro_DL) %>%
   bind_rows() %>%
   separate(Dendro, into = c("Tree", "Dendro"), 3)
 
