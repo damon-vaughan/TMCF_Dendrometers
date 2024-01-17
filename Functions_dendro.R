@@ -24,3 +24,4 @@ read_dendro_data <- function(x){
              str_detect(x, "um") == T, "Micrometers", "Tomst")) %>%
     select(.id, Timestamp, Moisture, T1, T2, T3, Dendro, DendroUnits)
 }
+

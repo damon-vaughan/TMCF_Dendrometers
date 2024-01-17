@@ -150,7 +150,11 @@ for(i in dendro.vec){
   d2 <- d %>%
     fix_jumps(10)
 
-  write_csv(d2, file.path("Dendro_data_L2",
+  d3 <- d2 %>%
+    ungroup() %>%
+    mutate(Radius = Radius - first(Radius))
+
+  write_csv(d3, file.path("Dendro_data_L2",
                       str_c(i, "_Dendro_L2.csv")))
 }
 
@@ -219,7 +223,15 @@ for(i in dendro.vec){
     mutate(gro_yr = ifelse(Timestamp >= as_datetime("2023-01-01 00:00:00"),
                            gro_yr + gro.yr.reset, gro_yr))
 
-  write_csv(d3, file.path("Dendro_data_L2a",
+  # new way to correct the growth year reset
+  # d3 <- d2 %>%
+  #   mutate()
+
+  d4 <- d3 %>%
+    ungroup() %>%
+    mutate(Radius = Radius - first(Radius))
+
+  write_csv(d4, file.path("Dendro_data_L2a",
                           str_c(i, "_Dendro_L2a.csv")))
 }
 
