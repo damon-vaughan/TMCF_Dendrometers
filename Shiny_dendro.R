@@ -1,11 +1,11 @@
 library(needs)
-needs(tidyverse, shiny, lubridate, readxl, shinyWidgets)
+needs(tidyverse, shiny, lubridate, readxl)
 
 source("app_functions_dendro.R")
 options(readr.show_col_types = FALSE)
 
 import.log <- read_csv(file.path("Dendro_data_supporting", "Dendro_import_log.csv"))
-max.date <- max(import.log$Last.import, na.rm = T)
+max.date <- as_date(max(import.log$Last.import, na.rm = T))
 
 dendro.download <- read_csv(file.path("Dendro_data_supporting", "Dendro_DL_Dates.csv")) %>%
   mutate(DL.date = ymd_hms(str_c(DL.date, "10:00:00"), tz = "UTC")) %>%
@@ -24,9 +24,9 @@ ui <- fluidPage(
 
       sliderInput("daterange",
                   label = h4("Select date range"),
-                  min = ymd_hms("2022-09-01 00:00:00"),
+                  min = as_date("2022-09-01"),
                   max = max.date,
-                  value = c(ymd_hms("2022-09-01 00:00:00"),
+                  value = c(as_date("2022-09-01"),
                             max.date)),
 
       fluidRow(
@@ -58,7 +58,7 @@ ui <- fluidPage(
                             choices = c("yes", "no"),
                             selected = "no"))),
       fluidRow(
-        column(2,
+        column(3,
                radioButtons("tree",
                             label = h4("Select tree"),
                             choices = c("ET1", "ET2", "ET3", "ET4",
@@ -67,13 +67,26 @@ ui <- fluidPage(
                                         "FB5", "FB6", "FB7", "FB8",
                                         "TV1", "TV2", "TV3", "TV4"),
                             selected = "ET1")),
-        column(2, offset = 1,
-               radioButtons("letter",
-                            label = h4("Select Letter"),
-                            choices = c("a", "b"),
-                            selected = "a")
-        )
+        column(3, offset = 1,
+               fluidRow(
+                 radioButtons("letter",
+                              label = h4("Select Letter"),
+                              choices = c("a", "b"),
+                              selected = "a")),
+               fluidRow(
+                 radioButtons("Time.res",
+                              label = h4("Select time resolution"),
+                              choices = c("15 Min", "Hourly", "Daily", "Weekly"),
+                              selected = "15 Min")))
       ),
+
+      titlePanel("Download options"),
+      fluidRow(
+        column(5,
+               radioButtons("Time.format",
+                            label = h4("Select time format"),
+                            choices = c("ISO", "Excel_ready"),
+                            selected = "ISO"))),
       downloadButton(outputId = "downloadData", label = "Download")
     ),
 
@@ -88,8 +101,8 @@ ui <- fluidPage(
                             brush = "plot_brush"),
                  verbatimTextOutput("plot_clickinfo"),
                  plotOutput("plot_brushedpoints")),
-        tabPanel("Summary", tableOutput("summary")),
-        tabPanel("Data", tableOutput("data1"), tableOutput("data2"))))
+        tabPanel("Data", tableOutput("data1"), tableOutput("data2")),
+        tabPanel("Summary", tableOutput("summary"))))
     )
 )
 
@@ -102,13 +115,29 @@ server <- function(input, output, session) {
                        str_c(input$tree, input$letter, "_Dendro_",
                              input$Level, ".csv")), guess_max = 10000) %>%
       filter(Timestamp >= input$daterange[1] & Timestamp <= input$daterange[2]) %>%
-      mutate(Tree = str_sub(Dendrometer, start = 1, end = 3))
+      mutate(Tree = str_sub(Dendrometer, start = 1, end = 3)) %>%
+      select(Tree, Dendrometer, Timestamp, Radius)
   })
 
   dataInput2 <- reactive({
-    dataInput() %>%
-      mutate(Timestamp = as.character(Timestamp)) %>%
-      select(Dendrometer, Timestamp, Radius, Maximum = max, TWD = twd, Growth = gro_yr)
+    if(input$Time.res == "15 Min"){
+      dataInput()
+    } else if(input$Time.res == "Hourly"){
+      dataInput() %>%
+        group_by(Tree, Dendrometer, Timestamp = floor_date(Timestamp, "hour")) %>%
+        summarise(across(where(is.numeric), ~mean(., na.rm = T))) %>%
+        ungroup()
+    } else if(input$Time.res == "Daily"){
+      dataInput() %>%
+        group_by(Tree, Dendrometer, Timestamp = floor_date(Timestamp, "day")) %>%
+        summarise(across(where(is.numeric), ~mean(., na.rm = T))) %>%
+        ungroup()
+    } else if(input$Time.res == "Weekly"){
+      dataInput() %>%
+        group_by(Tree, Dendrometer, Timestamp = floor_date(Timestamp, "week")) %>%
+        summarise(across(where(is.numeric), ~mean(., na.rm = T))) %>%
+        ungroup()
+      }
   })
 
   label.DL <- reactive({
@@ -127,7 +156,7 @@ server <- function(input, output, session) {
 
   output$plot1 <- renderPlot({
     p = ggplot() +
-      geom_line(data = dataInput(), aes(x = Timestamp, y = Radius)) +
+      geom_line(data = dataInput2(), aes(x = Timestamp, y = Radius)) +
       labs(y = "Micrometers") +
       theme_bw() +
       theme(axis.title.x = element_blank(),
@@ -151,16 +180,16 @@ server <- function(input, output, session) {
     })
 
   output$maxdate.output <- renderText({
-    as.character(max(dataInput()$Timestamp, na.rm = T))
+    as.character(max(dataInput2()$Timestamp, na.rm = T))
   })
 
   output$plot_clickinfo <- renderPrint({
-    val <- nearPoints(dataInput(), input$plot_click, maxpoints = 1)
+    val <- nearPoints(dataInput2(), input$plot_click, maxpoints = 1)
     unique(val$Timestamp)
   })
 
   output$plot_brushedpoints <- renderPlot({
-    dat <- brushedPoints(dataInput(), input$plot_brush)
+    dat <- brushedPoints(dataInput2(), input$plot_brush)
     if (nrow(dat) == 0)
       return()
     ggplot(dat) +
@@ -175,16 +204,35 @@ server <- function(input, output, session) {
       ggtitle(str_c(input$tree, "_", input$dendro))
   })
 
+## Data and summaries ------------------------------------------------------
+
+  data.for.summaries <- reactive({
+    dataInput2() %>%
+      mutate(Timestamp = as.character(Timestamp)) %>%
+      select(Dendrometer, Timestamp, Radius)
+  })
+
   output$summary <- renderTable({
-      summarise_dendro(dataInput2())
+      summarise_dendro(data.for.summaries())
   })
 
   output$data1 <- renderTable({
-    head(dataInput2())
+    head(data.for.summaries())
   })
 
   output$data2 <- renderTable({
-    tail(dataInput2())
+    tail(data.for.summaries())
+  })
+
+## Download options --------------------------------------------------------
+
+  data.for.download <- reactive({
+    if(input$Time.format == "Excel_ready"){
+      dataInput2() %>%
+        mutate(Timestamp = as.character(Timestamp))
+    } else {
+      dataInput2()
+    }
   })
 
   output$downloadData <- downloadHandler(
@@ -196,7 +244,7 @@ server <- function(input, output, session) {
             ".csv")
     },
     content = function(file) {
-      write_csv(dataInput(), file)
+      write_csv(data.for.download(), file)
     }
   )
 }
@@ -206,14 +254,16 @@ shinyApp(ui, server)
 
 # Test server -------------------------------------------------------------
 #
-# testServer(server, {
-#   session$setInputs(Level = "L2a")
-#   session$setInputs(tree = "FB1")
-#   session$setInputs(letter = "a")
-#   session$setInputs(daterange = c(min = ymd("2022-09-01"),
-#                                   max = ymd(as.character(Sys.Date()))))
-#   test <<- print(dataInput2())
-# })
+testServer(server, {
+  session$setInputs(Level = "L2a")
+  session$setInputs(tree = "FB1")
+  session$setInputs(letter = "a")
+  session$setInputs(Time.res = "Hourly")
+  session$setInputs(Time.format = "ISO")
+  session$setInputs(daterange = c(min = ymd("2022-09-01"),
+                                  max = ymd(as.character(Sys.Date()))))
+  test <<- print(data.for.download())
+})
 
 
 
