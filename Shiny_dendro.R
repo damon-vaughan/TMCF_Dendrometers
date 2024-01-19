@@ -254,16 +254,16 @@ shinyApp(ui, server)
 
 # Test server -------------------------------------------------------------
 #
-testServer(server, {
-  session$setInputs(Level = "L2a")
-  session$setInputs(tree = "FB1")
-  session$setInputs(letter = "a")
-  session$setInputs(Time.res = "Hourly")
-  session$setInputs(Time.format = "ISO")
-  session$setInputs(daterange = c(min = ymd("2022-09-01"),
-                                  max = ymd(as.character(Sys.Date()))))
-  test <<- print(data.for.download())
-})
+# testServer(server, {
+#   session$setInputs(Level = "L2a")
+#   session$setInputs(tree = "FB1")
+#   session$setInputs(letter = "a")
+#   session$setInputs(Time.res = "Hourly")
+#   session$setInputs(Time.format = "ISO")
+#   session$setInputs(daterange = c(min = ymd("2022-09-01"),
+#                                   max = ymd(as.character(Sys.Date()))))
+#   test <<- print(data.for.download())
+# })
 
 
 
