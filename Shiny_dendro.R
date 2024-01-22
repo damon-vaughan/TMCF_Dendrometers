@@ -7,7 +7,7 @@ options(readr.show_col_types = FALSE)
 import.log <- read_csv(file.path("Dendro_data_supporting", "Dendro_import_log.csv"))
 max.date <- as_date(max(import.log$Last.import, na.rm = T))
 
-dendro.download <- read_csv(file.path("Dendro_data_supporting", "Dendro_DL_Dates.csv")) %>%
+dendro.download <- read_csv(file.path("Dendro_data_supporting", "Dendro_DL_dates.csv")) %>%
   mutate(DL.date = ymd_hms(str_c(DL.date, "10:00:00"), tz = "UTC")) %>%
   unite(Tree, Letter, col = "Dendrometer", sep = "")
 
