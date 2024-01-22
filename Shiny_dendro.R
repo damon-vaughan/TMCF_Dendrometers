@@ -11,7 +11,7 @@ dendro.download <- read_csv(file.path("Dendro_data_supporting", "Dendro_DL_dates
   mutate(DL.date = ymd_hms(str_c(DL.date, "10:00:00"), tz = "UTC")) %>%
   unite(Tree, Letter, col = "Dendrometer", sep = "")
 
-tree.visits <- read_excel("C:/Users/vaug8/OneDrive - University of Kentucky/TMCF/Continuous_data/Maintenance notes/Tree_visits.xlsx") %>%
+tree.visits <- read_excel(file.path("Dendro_data_supporting", "Tree_visits.xlsx")) %>%
   pivot_longer(2:21, names_to = "Tree", values_to = "Timestamp")%>%
   mutate(Timestamp = ymd_hms(str_c(Timestamp, "10:00:00"), tz = "UTC"))
 
