@@ -278,7 +278,7 @@ server <- function(input, output, session) {
 }
 
 # Run ----------------------------------------------------------
-# shinyApp(ui, server)
+shinyApp(ui, server)
 
 # Test server -------------------------------------------------------------
 #
