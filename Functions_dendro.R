@@ -5,9 +5,12 @@
 dendro.vec.full <- c(
   "ET1a", "ET2a", "ET2b", "ET3a", "ET4a", "ET4b", "ET5a", "ET5b", "ET6a",
   "ET7a", "ET8a", "FB1a", "FB2a", "FB3a", "FB3b", "FB4a", "FB4b",
-  "FB5a", "FB5b", "FB6a", "FB6b", "FB7a", "FB7b", "FB8a",
+  "FB5a", "FB5b", "FB6a", "FB6b", "FB7a", "FB7b", "FB8a", "FB8b",
   "TV1a", "TV2a", "TV3a", "TV4a")
 
+full.tree.vec <- c("ET1", "ET2", "ET3", "ET4", "ET5", "ET6", "ET7", "ET8",
+                   "FB1", "FB2", "FB3", "FB4", "FB5", "FB6", "FB7", "FB8",
+                   "TV1", "TV2", "TV3", "TV4")
 
 
 # Functions ---------------------------------------------------------------

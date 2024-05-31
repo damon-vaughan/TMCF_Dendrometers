@@ -45,8 +45,8 @@ ui <- fluidPage(
         column(3,
                radioButtons("Level",
                             label = h4("Select level"),
-                            choices = c("L1", "L2", "L2a"),
-                            selected = "L2a")),
+                            choices = c("L1", "L2"),
+                            selected = "L2")),
         column(3, offset = 1,
                radioButtons("show.download",
                             label = h4("Show downloads?"),
@@ -95,14 +95,22 @@ ui <- fluidPage(
         type = "tabs",
         tabPanel("Plot",
                  "Graph shows data until:",
-                 verbatimTextOutput("maxdate.output"),
+                 verbatimTextOutput("max.date.out"),
                  plotOutput("plot1",
                             click = "plot_click",
                             brush = "plot_brush"),
                  verbatimTextOutput("plot_clickinfo"),
-                 plotOutput("plot_brushedpoints")),
+                 plotOutput("plot_brushedpoints"),
+                 h4("Growth and water deficit plot:"),
+                 plotOutput("plot_TWD")),
         tabPanel("Data", tableOutput("data1"), tableOutput("data2")),
-        tabPanel("Summary", tableOutput("summary"))))
+        tabPanel("Summary",
+                 h4("Variable summary stats:"),
+                 tableOutput("summary1"),
+                 h4("Total growth:"),
+                 tableOutput("summary2"),
+                 h4("Percentage of time spent in TWD:"),
+                 tableOutput("summary3"))))
     )
 )
 
@@ -116,7 +124,7 @@ server <- function(input, output, session) {
                              input$Level, ".csv")), guess_max = 10000) %>%
       filter(Timestamp >= input$daterange[1] & Timestamp <= input$daterange[2]) %>%
       mutate(Tree = str_sub(Dendrometer, start = 1, end = 3)) %>%
-      select(Tree, Dendrometer, Timestamp, Radius)
+      mutate(TWD = TWD * -1)
   })
 
   dataInput2 <- reactive({
@@ -179,7 +187,7 @@ server <- function(input, output, session) {
     p
     })
 
-  output$maxdate.output <- renderText({
+  output$max.date.out <- renderText({
     as.character(max(dataInput2()$Timestamp, na.rm = T))
   })
 
@@ -204,16 +212,36 @@ server <- function(input, output, session) {
       ggtitle(str_c(input$tree, "_", input$dendro))
   })
 
+  output$plot_TWD <- renderPlot({
+    ggplot(dataInput()) +
+      geom_line(aes(x = Timestamp, y = TWD), color = "blue") +
+      geom_line(aes(x = Timestamp, y = Growth), color = "green") +
+      labs(y = "Micrometers") +
+      theme_bw() +
+      theme(axis.title.x = element_blank(),
+            axis.text.x = element_text(size = 20),
+            axis.title.y = element_text(size = 24),
+            axis.text.y = element_text(size = 20),
+            plot.title = element_text(size = 24))
+  })
+
 ## Data and summaries ------------------------------------------------------
 
   data.for.summaries <- reactive({
     dataInput2() %>%
-      mutate(Timestamp = as.character(Timestamp)) %>%
-      select(Dendrometer, Timestamp, Radius)
+      mutate(Timestamp = as.character(Timestamp))
   })
 
-  output$summary <- renderTable({
-      summarise_dendro(data.for.summaries())
+  output$summary1 <- renderTable({
+    summarise_dendro_vars(data.for.summaries())
+  })
+
+  output$summary2 <- renderTable({
+    summarise_growth_stats(data.for.summaries())
+  })
+
+  output$summary3 <- renderTable({
+    summarise_TWD(data.for.summaries())
   })
 
   output$data1 <- renderTable({
@@ -254,225 +282,13 @@ shinyApp(ui, server)
 
 # Test server -------------------------------------------------------------
 #
-# testServer(server, {
-#   session$setInputs(Level = "L2a")
-#   session$setInputs(tree = "FB1")
-#   session$setInputs(letter = "a")
-#   session$setInputs(Time.res = "Hourly")
-#   session$setInputs(Time.format = "ISO")
-#   session$setInputs(daterange = c(min = ymd("2022-09-01"),
-#                                   max = ymd(as.character(Sys.Date()))))
-#   test <<- print(data.for.download())
-# })
-
-
-
-# Extra stuff... ----------------------------------------------------------
-
-
-
-## UI 2: L2a twd and growth --------------------------------------------
-#
-#ui <- fluidPage(
-#  titlePanel("Dendro graphs"),
-#
-#  sidebarLayout(
-#    sidebarPanel(
-#      sliderInput("daterange",
-#                  label = h4("Select date range"),
-#                  min = ymd_hms("2022-09-01 00:00:00"),
-#                  max = max.date,
-#                  value = c(ymd_hms("2022-09-01 00:00:00"),
-#                            max.date)),
-#      fluidRow(
-#        column(2,
-#               radioButtons("tree",
-#                            label = h4("Select tree"),
-#                            choices = c("ET1", "ET2", "ET3", "ET4",
-#                                        "ET5", "ET6", "ET7", "ET8",
-#                                        "FB1", "FB2", "FB3", "FB4",
-#                                        "FB5", "FB6", "FB7", "FB8",
-#                                        "TV1", "TV2", "TV3", "TV4"),
-#                            selected = "ET1")),
-#        column(2, offset = 1,
-#               fluidRow(
-#                 radioButtons("letter",
-#                              label = h4("Select Letter"),
-#                              choices = c("a", "b"),
-#                              selected = "a")),
-#               fluidRow(
-#                 radioButtons("show.jumps",
-#                              label = h4("Show jumps?"),
-#                              choices = c("yes", "no"),
-#                              selected = "yes"))
-#               )
-#      )
-#    ),
-#
-#    mainPanel(plotOutput("plot1",
-#                         hover = "plot_hover",
-#                         brush = "plot_brush"),
-#              plotOutput("plot2"),
-#              verbatimTextOutput("plot_hoverinfo"),
-#              plotOutput("plot_brushedpoints"))
-#  )
-#)
-#
-#
-## Server 2 ----------------------------------------------------------------
-#
-#server <- function(input, output, session) {
-#  dataInput <- reactive({
-#    read_csv(file.path("Dendro_data_L2a",
-#                       str_c(input$tree, input$letter,
-#                             "_Dendro_L2a.csv")), guess_max = 10000) %>%
-#      filter(Timestamp >= input$daterange[1] & Timestamp <= input$daterange[2])
-#  })
-#
-#  dataLabel <- reactive({
-#    dataInput() %>%
-#      filter(flags == "jump1")
-#  })
-#
-#  output$plot1 <- renderPlot({
-#    p <- ggplot() +
-#      geom_line(data = dataInput(), aes(x = Timestamp, y = gro_yr)) +
-#      labs(y = "Micrometers") +
-#      theme_bw() +
-#      theme(axis.title.x = element_blank(),
-#            axis.text.x = element_text(size = 20),
-#            axis.title.y = element_text(size = 24),
-#            axis.text.y = element_text(size = 20),
-#            plot.title = element_text(size = 24)) +
-#      ggtitle(str_c(input$tree, input$letter))
-#
-#    if(input$show.jumps == "yes"){
-#      p <- p +
-#        geom_point(data = dataLabel(), aes(x = Timestamp, y = gro_yr),
-#                 color = "blue", size = 2)
-#    }
-#    p
-#  })
-#
-#  output$plot2 <- renderPlot({
-#    p <- ggplot() +
-#      geom_line(data = dataInput(), aes(x = Timestamp, y = twd)) +
-#      labs(y = "Micrometers") +
-#      theme_bw() +
-#      theme(axis.title.x = element_blank(),
-#            axis.text.x = element_text(size = 20),
-#            axis.title.y = element_text(size = 24),
-#            axis.text.y = element_text(size = 20),
-#            plot.title = element_text(size = 24))
-#    if(input$show.jumps == "yes"){
-#      p <- p +
-#        geom_point(data = dataLabel(), aes(x = Timestamp, y = twd),
-#                   color = "blue", size = 2)
-#    }
-#    p
-#  })
-#
-#  output$plot_hoverinfo <- renderPrint({
-#    val <- nearPoints(dataInput(), input$plot_hover, maxpoints = 1)
-#    unique(val$Timestamp)
-#  })
-#
-#  output$plot_brushedpoints <- renderPlot({
-#    dat <- brushedPoints(dataInput(), input$plot_brush)
-#    if (nrow(dat) == 0)
-#      return()
-#    ggplot(dat) +
-#      geom_line(aes(x = Timestamp, y = Radius)) +
-#      labs(y = "micrometers") +
-#      theme_bw() +
-#      theme(axis.title.x = element_blank(),
-#            axis.text.x = element_text(size = 18),
-#            axis.title.y = element_text(size = 20),
-#            axis.text.y = element_text(size = 18),
-#            plot.title = element_text(size = 24)) +
-#      ggtitle(str_c(input$tree, "_", input$dendro))
-#  })
-#}
-#
-## Run 2 -------------------------------------------------------------------
-#
-#shinyApp(ui, server)
-#
-
-## UI 3: Navbar ---------------------------------------------------------------
-
-# ui <- fluidPage(
-#   titlePanel("Dendro graphs"),
-#
-#   navbarPage(
-#     sidebarPanel(
-#
-#       sliderInput("daterange",
-#                   label = h4("Select date range"),
-#                   min = ymd_hms("2022-09-01 00:00:00"),
-#                   max = max.date,
-#                   value = c(ymd_hms("2022-09-01 00:00:00"),
-#                             max.date)),
-#
-#       fluidRow(
-#         column(3,
-#                radioButtons("fixed.y",
-#                             label = h4("Fix y-axis?"),
-#                             choices = c("Yes", "No"),
-#                             selected = "No")),
-#         column(9,
-#                sliderInput("yrange",
-#                            label = h4("Select y-axis range"),
-#                            min = -200,
-#                            max = 4000,
-#                            value = c(0, 2000)))),
-#       fluidRow(
-#         column(3,
-#                radioButtons("Level",
-#                             label = h4("Select level"),
-#                             choices = c("L1", "L2", "L2a"),
-#                             selected = "L2a")),
-#         column(3, offset = 1,
-#                radioButtons("show.download",
-#                             label = h4("Show downloads?"),
-#                             choices = c("yes", "no"),
-#                             selected = "no")),
-#         column(3, offset = 1,
-#                radioButtons("show.visit",
-#                             label = h4("Show visits?"),
-#                             choices = c("yes", "no"),
-#                             selected = "no"))),
-#       fluidRow(
-#         column(2,
-#                radioButtons("tree",
-#                             label = h4("Select tree"),
-#                             choices = c("ET1", "ET2", "ET3", "ET4",
-#                                         "ET5", "ET6", "ET7", "ET8",
-#                                         "FB1", "FB2", "FB3", "FB4",
-#                                         "FB5", "FB6", "FB7", "FB8",
-#                                         "TV1", "TV2", "TV3", "TV4"),
-#                             selected = "ET1")),
-#         column(2, offset = 1,
-#                radioButtons("letter",
-#                             label = h4("Select Letter"),
-#                             choices = c("a", "b"),
-#                             selected = "a"))
-#       ),
-#       downloadButton("downloadData", "Download")
-#     ),
-#
-#     mainPanel(
-#       tabSetPanel(
-#         type = "tabs",
-#         tabPanel("Plot",
-#                  "Graph shows data until:",
-#                  verbatimTextOutput("maxdate.output"),
-#                  plotOutput("plot1",
-#                             click = "plot_click",
-#                             brush = "plot_brush"),
-#                  verbatimTextOutput("plot_clickinfo"),
-#                  plotOutput("plot_brushedpoints")),
-#         tabPanel("Summary")))
-#   )
-# )
-
+testServer(server, {
+  session$setInputs(Level = "L1")
+  session$setInputs(tree = "ET6")
+  session$setInputs(letter = "a")
+  session$setInputs(Time.res = "15 Min")
+  # session$setInputs(Time.format = "ISO")
+  session$setInputs(daterange = c(min = ymd("2022-09-01"),
+                                  max = ymd(as.character(Sys.Date()))))
+  test <<- print(dataInput())
+})
