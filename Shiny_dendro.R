@@ -278,17 +278,17 @@ server <- function(input, output, session) {
 }
 
 # Run ----------------------------------------------------------
-shinyApp(ui, server)
+# shinyApp(ui, server)
 
 # Test server -------------------------------------------------------------
 #
-testServer(server, {
-  session$setInputs(Level = "L1")
-  session$setInputs(tree = "ET6")
-  session$setInputs(letter = "a")
-  session$setInputs(Time.res = "15 Min")
-  # session$setInputs(Time.format = "ISO")
-  session$setInputs(daterange = c(min = ymd("2022-09-01"),
-                                  max = ymd(as.character(Sys.Date()))))
-  test <<- print(dataInput())
-})
+# testServer(server, {
+#   session$setInputs(Level = "L1")
+#   session$setInputs(tree = "ET6")
+#   session$setInputs(letter = "a")
+#   session$setInputs(Time.res = "15 Min")
+#   # session$setInputs(Time.format = "ISO")
+#   session$setInputs(daterange = c(min = ymd("2022-09-01"),
+#                                   max = ymd(as.character(Sys.Date()))))
+#   test <<- print(dataInput())
+# })
